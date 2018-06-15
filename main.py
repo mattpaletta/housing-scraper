@@ -1,6 +1,7 @@
 import logging
 import math
 import os
+import sys
 
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -25,33 +26,9 @@ class CraiglistPosting(object):
         self.distance = distance
         self.desc = desc
 
-
-def dist(x1, x2, y1, y2):
-    return math.sqrt((x2 - x1)**2 + (y2-y1)**2)
-
-
-def toRadians(x):
-    return float(x) * (math.pi / 360.0)
-
-
 def dist_lat_long_to_km(lat1, lon1, lat2, lon2):
-
-    EARTH_RADIUS = 6371e3  # metres
-    KM_PER_MILE = 1.60934
-
-    x1 = toRadians(lat1)
-    x2 = toRadians(lat2)
-
-    y1 = toRadians(lat2 - lat1)
-    y2 = toRadians(lon2 - lon1)
-
-    a = math.sin(y1 / 2) * math.sin(y1 / 2) + \
-        math.cos(x1) * math.cos(x2) * \
-        math.sin(y2 / 2) * math.sin(y2 / 2)
-
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    d = EARTH_RADIUS * c
-    return d * KM_PER_MILE
+    from geopy.distance import distance
+    return distance((lat1, lon1), (lat2, lon2)).km
 
 
 def process_posting(craigslist_posting: CraiglistPosting):
@@ -62,7 +39,7 @@ def process_posting(craigslist_posting: CraiglistPosting):
     try:
         post_body = soup.select_one("#postingbody").get_text()
     except:
-        print(soup)
+        logging.info("Post was probably deleted.")
         return
 
     if map is not None:
@@ -70,23 +47,25 @@ def process_posting(craigslist_posting: CraiglistPosting):
         longitude = map.get("data-longitude")
 
         dist_to_uvic = dist_lat_long_to_km(float(latitude), float(longitude),
-                                           48.4634, 123.3117)
+                                           48.4634, -123.3117)
 
         if dist_to_uvic > 10:
+            print(craigslist_posting.link)
             logging.info("Place too far: " + str(dist_to_uvic))
             return
     else:
+        logging.info("No map found.")
         dist_to_uvic = 0
 
     for bad in ["female only",
                 "until september",
                 "until august",
-                "for female student",
-                "until august 31"]:
+                "for female student"]:
         if str(post_body).lower().__contains__(bad):
+            logging.info("Post matches exclusion keywords.")
             return
 
-    craigslist_posting.distance = dist_to_uvic
+    craigslist_posting.distance = round(dist_to_uvic, 4)
     craigslist_posting.desc = post_body
 
     return craigslist_posting
@@ -110,20 +89,29 @@ def crawl_craiglist(config):
                 if int(price) <= config["max_price"] and link not in config["previous"]:
                     yield CraiglistPosting(price=price, link=link, name=name)
             except AttributeError:
-                #print(post)
                 pass
 
-def obj_to_dict(x):
-    if x is not None:
-        return x.__dict__
-
 def obj_to_dataframe(posting):
-    print(list(map(obj_to_dict, posting)))
+    postings_dict = []
+    for post in posting:
+        if post is not None:
+            x = post.__dict__
+            postings_dict.append(x)
 
-    #df = pd.DataFrame(list(map(dict, list(filter(lambda x: x is not None, posting)))))
-    #df.to_csv("housing.csv")
+    df = pd.DataFrame(postings_dict)
+    df = df[['name', 'price', 'distance', 'link', 'desc']]
+    df.to_csv("housing.csv")
 
 if __name__ == "__main__":
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+
+    ch = logging.StreamHandler(sys.stdout)
+    ch.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s - [%(filename)s:%(lineno)s]')
+    ch.setFormatter(formatter)
+    root.addHandler(ch)
+
     MAXPRICE = 800
 
     if os.path.exists("housing.csv"):
