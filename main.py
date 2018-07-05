@@ -1,11 +1,10 @@
 import logging
-import math
 import os
 import sys
 
 import pandas as pd
-from bs4 import BeautifulSoup
 import requests
+from bs4 import BeautifulSoup
 
 
 def get_tag(soup, tag):
@@ -25,6 +24,7 @@ class CraiglistPosting(object):
         self.name = name
         self.distance = distance
         self.desc = desc
+
 
 def dist_lat_long_to_km(lat1, lon1, lat2, lon2):
     from geopy.distance import distance
@@ -71,7 +71,6 @@ def process_posting(craigslist_posting: CraiglistPosting):
     return craigslist_posting
 
 
-
 def crawl_craiglist(config):
     for site in get_websites():
         page = requests.get(site)
@@ -91,6 +90,7 @@ def crawl_craiglist(config):
             except AttributeError:
                 pass
 
+
 def obj_to_dataframe(posting):
     postings_dict = []
     for post in posting:
@@ -101,6 +101,7 @@ def obj_to_dataframe(posting):
     df = pd.DataFrame(postings_dict)
     df = df[['name', 'price', 'distance', 'link', 'desc']]
     df.to_csv("housing.csv")
+
 
 if __name__ == "__main__":
     root = logging.getLogger()
@@ -127,5 +128,3 @@ if __name__ == "__main__":
     })
 
     obj_to_dataframe(map(process_posting, posts))
-
-
